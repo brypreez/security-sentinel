@@ -1,0 +1,71 @@
+---
+# wazuh_self_healing.yml
+# Enforces correct Wazuh Dashboard → OpenSearch connection configuration
+# Root cause: RFC 6724 IPv6 address selection preference causes dashboard to
+# resolve 'localhost' → '::1' while indexer binds to 127.0.0.1 only.
+# Fix: Explicitly set opensearch.hosts to https://127.0.0.1:9200
+#
+# Usage:
+#   Dry run:  ansible-playbook -i inventory/hosts.ini playbooks/wazuh_self_healing.yml --check
+#   Live run: ansible-playbook -i inventory/hosts.ini playbooks/wazuh_self_healing.yml
+
+- name: Wazuh Self-Healing — RFC 6724 IPv4/IPv6 Fix
+  hosts: wazuh_manager
+  become: true
+  vars:
+    dashboard_config: /etc/wazuh-dashboard/opensearch_dashboards.yml
+    correct_host: "https://127.0.0.1:9200"
+
+  tasks:
+
+    - name: Verify Wazuh Dashboard config file exists
+      ansible.builtin.stat:
+        path: "{{ dashboard_config }}"
+      register: config_stat
+
+    - name: Fail if config file is missing
+      ansible.builtin.fail:
+        msg: "Dashboard config not found at {{ dashboard_config }} — is Wazuh Dashboard installed?"
+      when: not config_stat.stat.exists
+
+    - name: Enforce opensearch.hosts set to explicit IPv4 loopback (RFC 6724 fix)
+      ansible.builtin.lineinfile:
+        path: "{{ dashboard_config }}"
+        regexp: '^\s*opensearch\.hosts:'
+        line: 'opensearch.hosts: ["{{ correct_host }}"]'
+        backup: yes
+      register: hosts_fix
+      notify: Restart Wazuh Dashboard
+
+    - name: Enforce SSL verification mode set to none
+      ansible.builtin.lineinfile:
+        path: "{{ dashboard_config }}"
+        regexp: '^\s*opensearch\.ssl\.verificationMode:'
+        line: 'opensearch.ssl.verificationMode: none'
+        backup: yes
+      register: ssl_fix
+      notify: Restart Wazuh Dashboard
+
+    - name: Verify Wazuh Indexer is bound to 127.0.0.1:9200
+      ansible.builtin.shell: ss -tlnp | grep 9200
+      register: indexer_bind
+      changed_when: false
+      failed_when: false
+
+    - name: Alert if Indexer is not listening on expected address
+      ansible.builtin.debug:
+        msg: "WARNING: Indexer may not be bound to 127.0.0.1:9200 — verify opensearch.yml"
+      when: "'127.0.0.1:9200' not in indexer_bind.stdout"
+
+    - name: Confirm no change needed (already correct)
+      ansible.builtin.debug:
+        msg: "Configuration already correct — no changes applied"
+      when: not hosts_fix.changed and not ssl_fix.changed
+
+  handlers:
+
+    - name: Restart Wazuh Dashboard
+      ansible.builtin.systemd:
+        name: wazuh-dashboard
+        state: restarted
+      listen: Restart Wazuh Dashboard
