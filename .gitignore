@@ -1,0 +1,31 @@
+# Terraform
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+
+# Ansible Vault & Secrets
+*.vault
+vault_pass.txt
+.vault_pass
+secrets.yml
+group_vars/*/vault.yml
+
+# SSH Keys
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
