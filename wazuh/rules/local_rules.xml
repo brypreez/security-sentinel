@@ -1,0 +1,19 @@
+<!-- local_rules.xml -->
+<!-- Custom detection rules for Kubernetes Control Plane Sentinel -->
+<!-- Loaded by Wazuh Manager at /var/ossec/etc/rules/local_rules.xml -->
+
+<group name="syscheck,k8s_security,">
+
+  <!-- Rule 110005: K8s Control Plane Manifest Tampering -->
+  <!-- Parent SID 550: Integrity checksum changed -->
+  <!-- Level 10: Critical — triggers Slack alert via ossec.conf integration -->
+  <!-- Compliance: PCI DSS 11.5 (unauthorized file modification) -->
+  <!--             GPG13 4.11 (change detection on critical files) -->
+  <rule id="110005" level="10">
+    <if_sid>550</if_sid>
+    <field name="file">/etc/kubernetes/manifests</field>
+    <description>CRITICAL: K8s Manifest Tampering Detected on $(agent.name) — file: $(file)</description>
+    <group>syscheck,k8s_security,pci_dss_11.5,gpg13_4.11,</group>
+  </rule>
+
+</group>

@@ -5,13 +5,19 @@
 # resolve 'localhost' → '::1' while indexer binds to 127.0.0.1 only.
 # Fix: Explicitly set opensearch.hosts to https://127.0.0.1:9200
 #
+# Secrets: Slack webhook URL loaded from Ansible Vault
+#   ansible-vault create ansible/vars/secrets.yml
+#   Contents: slack_webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK"
+#
 # Usage:
-#   Dry run:  ansible-playbook -i inventory/hosts.ini playbooks/wazuh_self_healing.yml --check
-#   Live run: ansible-playbook -i inventory/hosts.ini playbooks/wazuh_self_healing.yml
+#   Dry run:  ansible-playbook -i inventory/hosts.ini playbooks/wazuh_self_healing.yml --check --vault-password-file ~/.ansible_vault_pass
+#   Live run: ansible-playbook -i inventory/hosts.ini playbooks/wazuh_self_healing.yml --vault-password-file ~/.ansible_vault_pass
 
 - name: Wazuh Self-Healing — RFC 6724 IPv4/IPv6 Fix
   hosts: wazuh_manager
   become: true
+  vars_files:
+    - ../vars/secrets.yml   # Ansible Vault — contains slack_webhook_url
   vars:
     dashboard_config: /etc/wazuh-dashboard/opensearch_dashboards.yml
     correct_host: "https://127.0.0.1:9200"
@@ -35,7 +41,9 @@
         line: 'opensearch.hosts: ["{{ correct_host }}"]'
         backup: yes
       register: hosts_fix
-      notify: Restart Wazuh Dashboard
+      notify:
+        - Restart Wazuh Dashboard
+        - Notify Slack — Self-Healing Triggered
 
     - name: Enforce SSL verification mode set to none
       ansible.builtin.lineinfile:
@@ -44,7 +52,9 @@
         line: 'opensearch.ssl.verificationMode: none'
         backup: yes
       register: ssl_fix
-      notify: Restart Wazuh Dashboard
+      notify:
+        - Restart Wazuh Dashboard
+        - Notify Slack — Self-Healing Triggered
 
     - name: Verify Wazuh Indexer is bound to 127.0.0.1:9200
       ansible.builtin.shell: ss -tlnp | grep 9200
@@ -69,3 +79,29 @@
         name: wazuh-dashboard
         state: restarted
       listen: Restart Wazuh Dashboard
+
+    - name: Notify Slack — Self-Healing Triggered
+      ansible.builtin.uri:
+        url: "{{ slack_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          text: "🔧 *Wazuh Self-Healing Triggered*"
+          attachments:
+            - color: "warning"
+              fields:
+                - title: "Host"
+                  value: "{{ inventory_hostname }}"
+                  short: true
+                - title: "Fix Applied"
+                  value: "RFC 6724 IPv4/IPv6 loopback correction"
+                  short: true
+                - title: "Config"
+                  value: "{{ dashboard_config }}"
+                  short: false
+                - title: "Action"
+                  value: "opensearch.hosts set to https://127.0.0.1:9200 — Wazuh Dashboard restarted"
+                  short: false
+        status_code: 200
+      listen: Notify Slack — Self-Healing Triggered
+      no_log: true   # Prevents webhook URL from appearing in playbook output
