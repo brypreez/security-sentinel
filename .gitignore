@@ -1,4 +1,4 @@
-# Terraform
+# --- Terraform ---
 *.tfvars
 *.tfvars.json
 .terraform/
@@ -7,25 +7,32 @@ terraform.tfstate
 terraform.tfstate.backup
 *.tfplan
 
-# Ansible Vault & Secrets
-*.vault
+# --- Ansible & Secrets ---
+*.vault_pass
+*.pyc
+*.retry
+ansible/vars/secrets.yml.unencrypted
+**/vars/backup_*
 vault_pass.txt
 .vault_pass
-secrets.yml
-group_vars/*/vault.yml
+secrets.yml.plain
 
-# SSH Keys
+# --- Environment / Local Config ---
+.env
+.vagrant/
+bin/python
+
+# --- SSH Keys ---
 *.pem
 *.key
 id_rsa
 id_ed25519
 
-# OS
+# --- OS / IDE Garbage ---
 .DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
+*.tmp
+Thumbs.db
