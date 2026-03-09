@@ -57,7 +57,12 @@ A malicious YAML file dropped into `/etc/kubernetes/manifests` bypasses the Kube
 **Engineering decisions:**
 
 - **stdin JSON handshake** — Wazuh delivers the full alert as a JSON object via stdin. PCRE regex (`grep -oP`) extracts the exact `path` field for surgical file targeting
-- **Intelligent whitelisting** — regex guard prevents deletion of core control plane components (`kube-apiserver`, `etcd`, `kube-scheduler`, `kube-controller-manager`) regardless of rule trigger
+- **Intelligent whitelisting** — regex guard prevents deletion of core control plane components regardless of rule trigger. Protected components:
+
+```bash
+WHITELIST="kube-apiserver|kube-controller-manager|kube-scheduler|etcd"
+# If FILE_PATH matches any of the above → log and exit, no deletion
+```
 - **Maintenance mode kill switch** — presence of `/tmp/SENTINEL_OFF` halts all active response execution, enabling authorized cluster upgrades without triggering the reaper
 - **Zero-trust path guard** — all operations validated against `SAFE_DIR=/etc/kubernetes/manifests` before execution
 - **Forensic audit trail** — every event timestamped and logged to `/var/ossec/logs/active-responses.log` with full raw JSON input
@@ -82,11 +87,11 @@ A malicious YAML file dropped into `/etc/kubernetes/manifests` bypasses the Kube
 
 ### Verified Cluster-Wide Deployment
 
-| Node | IP | Active Response | Maintenance Mode |
-|------|----|----------------|-----------------|
-| k8s-master-1 | 192.168.20.10 | Verified | /tmp/SENTINEL_OFF |
-| k8s-master-2 | 192.168.20.11 | Verified | /tmp/SENTINEL_OFF |
-| k8s-master-3 | 192.168.20.12 | Verified | /tmp/SENTINEL_OFF |
+| Node | IP | k8s-nuke.sh | Active Response | Whitelist | Maintenance Mode |
+|------|----|-------------|----------------|-----------|-----------------|
+| k8s-master-1 | 192.168.20.10 | Deployed | ✅ Verified | ✅ Active | /tmp/SENTINEL_OFF |
+| k8s-master-2 | 192.168.20.11 | Deployed | ✅ Verified | ✅ Active | /tmp/SENTINEL_OFF |
+| k8s-master-3 | 192.168.20.12 | Deployed | ✅ Verified | ✅ Active | /tmp/SENTINEL_OFF |
 
 ---
 
@@ -143,7 +148,13 @@ The Sentinel specifically addresses the gap that Admission Controllers (OPA/Kyve
 
 ## Secrets Management
 
-Slack webhook URL stored exclusively in **Ansible Vault**. Zero secrets in version control. `no_log: true` on all Ansible tasks referencing sensitive variables.
+All credentials managed through **Ansible Vault** — production-grade secret management at rest.
+
+- Slack webhook URL lives exclusively in `ansible/vars/secrets.yml`, encrypted with `ansible-vault encrypt`
+- Vault password stored locally only at `~/.ansible_vault_pass` (`chmod 600`) — never committed
+- `no_log: true` set on every Ansible task referencing sensitive variables — webhook URL never surfaces in playbook output even under `-v` verbose mode
+- Pre-push secret scan verified clean: `Get-ChildItem -Recurse -File | Select-String -Pattern "hooks.slack.com"` — zero real credentials in version control
+- `.gitignore` explicitly blocks `*.vault_pass`, `secrets.yml.unencrypted`, and all `.env` files
 
 ---
 
