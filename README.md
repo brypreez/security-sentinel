@@ -1,16 +1,16 @@
 # security-sentinel
 
-**Enterprise-grade Security Orchestration, Automation, and Response (SOAR) for Kubernetes. Integrates Wazuh SIEM, custom XML FIM rules, Ansible Vault, and an automated active response reaper for real-time detection and remediation.**
+**Production-grade Kubernetes Active Response Sentinel. Automated Incident Response (AIR) engine integrating Wazuh SIEM, custom XML rule tiers, Bash-based active response, and a 6-panel SOC dashboard for real-time cluster security operations.**
 
-> MTTD under 5 seconds. MTTR under 3 seconds. Cluster-wide orchestration across all control plane nodes. Operated to production standards. Everything here is verified operational.
+> MTTD under 5 seconds. MTTR under 3 seconds. Race-condition-aware OS syscall detection. Operated to production standards. Everything here is verified operational.
 
 ---
 
 ## Overview
 
-This repository contains the detection logic, automation playbooks, active response scripts, and infrastructure-as-code for the **Kubernetes Control Plane Sentinel** — a real-time SOAR pipeline defending a 5-node Kubernetes HA cluster against Static Pod persistence attacks.
+This repository is the source of truth for the **Kubernetes Control Plane Sentinel** — a fully deployed SOAR pipeline defending a 5-node Kubernetes HA cluster against Static Pod persistence attacks and destructive API activity.
 
-The pipeline monitors `/etc/kubernetes/manifests` across all 3 control plane nodes simultaneously, matches FIM events against a custom detection rule (Rule 110005, Level 10), delivers structured JSON alerts to a SOC Slack channel, and executes an automated reaper script that neutralizes unauthorized manifests before the Kubelet can pull the image — with no hardcoded agent IDs and no manual intervention required.
+The system operates across two phases: an **Automated Response Engine** that detects and neutralizes unauthorized control plane manifests before the Kubelet can initialize them, and a **Security Operations Center** providing real-time visibility into cluster API activity, actor identity, and mitigation events through a 6-panel Wazuh/Kibana dashboard.
 
 ---
 
@@ -18,29 +18,29 @@ The pipeline monitors `/etc/kubernetes/manifests` across all 3 control plane nod
 
 ```mermaid
 flowchart LR
-    A[K8s Master 1/2/3\n/etc/kubernetes/manifests] -->|inotify realtime FIM| B[Wazuh Agent\nlocal]
-    B -->|syscheck event| C[Wazuh Manager\n192.168.40.20]
-    C -->|Rule 110005 match\nLevel 10 - PCI DSS 11.5| D{Alert Engine}
-    D -->|JSON payload| E[Slack Webhook API\nAnsible Vault secured]
-    D -->|Active Response\nlocation: local\nstdin JSON handshake| F[k8s-nuke.sh\nReaper Script]
-    E -->|Structured alert| G[#security-alerts\nSOC Channel]
-    F -->|PCRE regex path parse\nrm -f manifest| H[Threat Neutralized\nMTTR under 3 seconds]
+    A[K8s Master 1/2/3\n/etc/kubernetes/manifests] -->|inotify realtime FIM| B[Wazuh Agent\nlocation: local]
+    C[kube-apiserver\nAudit Log Stream] -->|JSON audit events| B
+    B -->|syscheck + audit events| D[Wazuh Manager\n192.168.40.20]
+    D -->|Rule 110003\nAudit normalization| E{Rule Engine}
+    D -->|Rule 110005\nFIM manifest match| E
+    E -->|Rule 110006\nLevel 12 - kube-system delete| F[Slack Webhook API\nAnsible Vault secured]
+    E -->|Active Response\nstdin JSON handshake| G[k8s-nuke.sh\nReaper Script]
+    F -->|Structured alert| H[#security-alerts\nSOC Channel]
+    G -->|Whitelist check\nMaintenance mode check\nrm -f manifest| I[Threat Neutralized\nMTTR under 3 seconds]
+    D -->|wazuh-alerts index| J[6-Panel SOC Dashboard\nKibana/Wazuh]
 ```
 
 ---
 
-## Problem Statement
+## Phase 1 — Automated Response Engine
 
-Kubernetes Static Pods are a high-level attack vector for persistent root access. A malicious YAML file dropped into `/etc/kubernetes/manifests` is picked up directly by the Kubelet — bypassing the API server, RBAC, and audit logging entirely. Once the static pod is running, the attacker has node-level persistence that survives `kubectl delete`.
+### The Threat: Static Pod Persistence
 
-The default Wazuh configuration does not monitor this directory. The default security posture has no automated response to this vector. Detection alone is insufficient.
+A malicious YAML file dropped into `/etc/kubernetes/manifests` bypasses the Kubernetes API server, RBAC, and audit logging entirely. The Kubelet picks it up directly, giving an attacker node-level persistence that survives `kubectl delete`. The Sentinel operates at the OS syscall layer via `inotify` — consistently outperforming the Kubelet's reconciliation loop to delete malicious manifests before they can initialize.
 
----
+### Rule Tier — Detection Logic
 
-## Solution: Automated Delete-on-Detection
-
-### Detection — Rule 110005 (`wazuh/rules/local_rules.xml`)
-
+**Rule 110005** — FIM Trigger (`wazuh/rules/local_rules.xml`):
 ```xml
 <group name="syscheck,k8s_security,">
   <rule id="110005" level="10">
@@ -52,8 +52,17 @@ The default Wazuh configuration does not monitor this directory. The default sec
 </group>
 ```
 
-### Active Response Binding (`ossec.conf`)
+### Active Response — k8s-nuke.sh
 
+**Engineering decisions:**
+
+- **stdin JSON handshake** — Wazuh delivers the full alert as a JSON object via stdin. PCRE regex (`grep -oP`) extracts the exact `path` field for surgical file targeting
+- **Intelligent whitelisting** — regex guard prevents deletion of core control plane components (`kube-apiserver`, `etcd`, `kube-scheduler`, `kube-controller-manager`) regardless of rule trigger
+- **Maintenance mode kill switch** — presence of `/tmp/SENTINEL_OFF` halts all active response execution, enabling authorized cluster upgrades without triggering the reaper
+- **Zero-trust path guard** — all operations validated against `SAFE_DIR=/etc/kubernetes/manifests` before execution
+- **Forensic audit trail** — every event timestamped and logged to `/var/ossec/logs/active-responses.log` with full raw JSON input
+
+### Active Response Binding (`ossec.conf`)
 ```xml
 <command>
   <name>k8s-nuke</name>
@@ -69,45 +78,53 @@ The default Wazuh configuration does not monitor this directory. The default sec
 </active-response>
 ```
 
-`<location>local</location>` means the Manager dynamically routes the response to whichever agent triggered the alert — no hardcoded agent IDs. This configuration scales horizontally: 3 master nodes today, 300 tomorrow, without changing a single line of XML.
+`<location>local</location>` routes responses dynamically to the triggering agent — no hardcoded agent IDs. Scales horizontally from 3 nodes to 300 without configuration changes.
 
-### Automated Reaper — k8s-nuke.sh (`wazuh/active-response/k8s-nuke.sh`)
+### Verified Cluster-Wide Deployment
 
-**Engineering decisions:**
-
-- **stdin JSON handshake** — Wazuh delivers the full alert JSON via stdin. The script uses PCRE regex (`grep -oP`) to extract the exact `path` field from the payload, identifying the unauthorized manifest with surgical precision
-- **Zero-trust path guard** — before any `rm` executes, the path is validated against `SAFE_DIR=/etc/kubernetes/manifests`. Prevents command injection or collateral damage if rule misconfiguration occurs
-- **Forensic audit trail** — every execution event (detection, removal, safety block, or miss) is timestamped and written to `/var/ossec/logs/active-responses.log` with the full raw JSON input
-
-```bash
-SAFE_DIR="/etc/kubernetes/manifests"
-FILE_PATH=$(echo "$INPUT" | grep -oP '(?<="path":")[^"]*')
-
-if [[ "$FILE_PATH" == "$SAFE_DIR"* ]]; then
-    rm -f "$FILE_PATH"
-    echo "$(date) - SUCCESS: $FILE_PATH removed." >> "$LOG_FILE"
-else
-    echo "$(date) - SAFETY ALERT: Path outside safe dir blocked." >> "$LOG_FILE"
-fi
-```
+| Node | IP | Active Response | Maintenance Mode |
+|------|----|----------------|-----------------|
+| k8s-master-1 | 192.168.20.10 | Verified | /tmp/SENTINEL_OFF |
+| k8s-master-2 | 192.168.20.11 | Verified | /tmp/SENTINEL_OFF |
+| k8s-master-3 | 192.168.20.12 | Verified | /tmp/SENTINEL_OFF |
 
 ---
 
-## Verified Cluster-Wide Deployment
+## Phase 2 — Security Operations Center
 
-Active response confirmed operational on all three control plane nodes:
+### Rule Tier — Audit & Behavioral Detection
 
-| Node | IP | Status |
-|------|----|--------|
-| k8s-master-1 | 192.168.20.10 | Active response verified |
-| k8s-master-2 | 192.168.20.11 | Active response verified |
-| k8s-master-3 | 192.168.20.12 | Active response verified |
+**Rule 110003** — K8s Audit Normalization:
+Ingests raw Kubernetes JSON audit log stream from kube-apiserver. Maps `data.verb`, `data.objectRef.namespace`, `data.objectRef.resource`, and `data.sourceIPs` to Wazuh's internal field architecture for coherent querying and dashboard visualization.
 
-**Validation test:**
-```bash
-sudo touch /etc/kubernetes/manifests/cluster-wide-test.yaml
-# File removed by k8s-nuke.sh within 3 seconds
-```
+**Rule 110006** — Level 12 Behavioral Alert:
+Triggers on destructive API actions (`delete`, `patch`) within the `kube-system` namespace. Level 12 classification routes directly to Slack via webhook integration — instant SOC notification for high-risk cluster activity.
+
+### 6-Panel SOC Dashboard (Wazuh/Kibana)
+
+Built on the `wazuh-alerts-*` index with KQL-filtered visualizations:
+
+| Panel | Type | Purpose |
+|-------|------|---------|
+| Namespace Distribution | Pie chart | Blast-radius visualization — resource allocation by namespace |
+| Urgency Metric | Metric counter | Real-time count of Level 12+ security events |
+| Identity Audit | Data table | `user.username` tracking for every API call — actor attribution |
+| API Verb Breakdown | Horizontal bar chart | `get` vs. `delete` volume ratio — behavioral baselining |
+| Sentinel Audit Trail | Filtered table | Dedicated log of every automated mitigation event from k8s-nuke.sh |
+| High-Risk Timeline | Date histogram (KQL-filtered) | Temporal spikes in destructive cluster activity |
+
+---
+
+## Defense-in-Depth Architecture
+
+| Layer | Control | Protects Against |
+|-------|---------|-----------------|
+| API Server | RBAC + Admission Controllers | Unauthorized API requests |
+| Host Filesystem | Wazuh FIM + k8s-nuke.sh | Static pod persistence bypassing API |
+| Behavioral | Rule 110006 + Slack | Destructive API activity in kube-system |
+| Audit | Rule 110003 + SOC Dashboard | Actor attribution and forensic trail |
+
+The Sentinel specifically addresses the gap that Admission Controllers (OPA/Kyverno) cannot cover — attacks that bypass the API server entirely by writing directly to the host filesystem.
 
 ---
 
@@ -115,29 +132,18 @@ sudo touch /etc/kubernetes/manifests/cluster-wide-test.yaml
 
 | Stage | Component | Latency |
 |-------|-----------|---------|
-| File change detected | Wazuh FIM (inotify realtime) | < 1s |
-| Rule 110005 matched | Wazuh Manager analysis engine | < 1s |
-| Slack alert delivered | Webhook API (Ansible Vault secured) | < 3s total MTTD |
+| File change detected | Wazuh FIM (inotify) | < 1s |
+| Rule 110005 matched | Wazuh Manager | < 1s |
+| Slack alert delivered | Webhook API | < 3s MTTD |
 | Active response dispatched | Manager → local agent | < 1s |
-| Unauthorized manifest deleted | k8s-nuke.sh | < 3s total MTTR |
-
----
-
-## Key Engineering Wins
-
-**Horizontal scalability** — `<location>local</location>` routes responses dynamically to the triggering agent. No agent IDs hardcoded. Scales from 3 nodes to 300 without configuration changes.
-
-**XML dependency ordering** — Wazuh requires `<command>` to be declared before `<active-response>` in `ossec.conf`. Incorrect ordering produces a silent parse failure. Validated with `wazuh-analysisd -t` before every restart.
-
-**JSON payload parsing** — Wazuh passes alert data as a JSON object via stdin, not as shell arguments. Extracting the `path` field required PCRE regex on raw stdin rather than positional argument handling.
-
-**Secrets management** — Slack webhook URL stored exclusively in Ansible Vault. `no_log: true` on all playbook tasks referencing the variable. Zero secrets in version control.
+| Whitelist + maintenance check | k8s-nuke.sh | Milliseconds |
+| Unauthorized manifest deleted | rm -f | < 3s MTTR |
 
 ---
 
 ## Secrets Management
 
-All credentials managed through **Ansible Vault**. The `.gitignore` blocks `.tfvars`, vault files, and Terraform state. `no_log: true` set on all tasks referencing sensitive variables — webhook URL never surfaces in playbook output even under verbose logging.
+Slack webhook URL stored exclusively in **Ansible Vault**. Zero secrets in version control. `no_log: true` on all Ansible tasks referencing sensitive variables.
 
 ---
 
@@ -154,9 +160,9 @@ security-sentinel/
 │       └── wazuh_self_healing.yml   # RFC 6724 fix + Slack alert on remediation
 └── wazuh/
     ├── rules/
-    │   └── local_rules.xml          # Rule 110005 - K8s manifest tampering detection
+    │   └── local_rules.xml          # Rules 110003, 110005, 110006
     └── active-response/
-        └── k8s-nuke.sh              # Automated reaper - delete-on-detection policy
+        └── k8s-nuke.sh              # Reaper - whitelist, maintenance mode, PCRE parsing
 ```
 
 ---
@@ -170,7 +176,7 @@ security-sentinel/
 | Agent Count | 8 |
 | Cluster | 5-node K8s HA (kubeadm), etcd quorum |
 | Alert Destination | Slack #security-alerts |
-| Compliance | PCI DSS 11.5, GPG13 4.11 |
+| Compliance | PCI DSS 11.5, GPG13 4.11, MITRE ATT&CK T1485, NIST 800-53 |
 | MTTD | < 5 seconds |
 | MTTR | < 3 seconds |
 
@@ -178,10 +184,10 @@ security-sentinel/
 
 ## Roadmap
 
-- [ ] Centralize FIM config via `agent.conf` on Wazuh Manager — manage all nodes from one file
-- [ ] Whitelist logic in `k8s-nuke.sh` — hash or comment validation to protect authorized automated updates
-- [ ] K8s Audit Logging → Wazuh — route kube-apiserver audit events into SIEM pipeline
-- [ ] GitHub Actions — `wazuh-analysisd -t` validation on every PR touching `ossec.conf` or rules
+- [ ] Centralize FIM config via `agent.conf` on Wazuh Manager
+- [ ] Hash-based whitelisting in k8s-nuke.sh for authorized manifest validation
+- [ ] K8s NetworkPolicy enforcement layer
+- [ ] OPA/Gatekeeper policy-as-code via ArgoCD
 
 ---
 
