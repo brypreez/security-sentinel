@@ -5,7 +5,7 @@
 
 **Production-grade Kubernetes Active Response Sentinel. Automated Incident Response (AIR) engine integrating Wazuh SIEM, custom XML rule tiers, Bash-based active response, and a 6-panel SOC dashboard for real-time cluster security operations.**
 
-> MTTD under 5 seconds. MTTR under 3 seconds. Race-condition-aware OS syscall detection. Operated to production standards. Everything here is verified operational.
+> MTTD under 1 second. MTTR under 1 second. Race-condition-aware OS syscall detection. Operated to production standards. Everything here is verified operational.
 
 ---
 
