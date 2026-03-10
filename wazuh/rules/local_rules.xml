@@ -1,4 +1,4 @@
-﻿<group name="kubernetes_security,">
+<group name="kubernetes_security,">
 
   <rule id="110001" level="10">
     <if_sid>5402</if_sid>
