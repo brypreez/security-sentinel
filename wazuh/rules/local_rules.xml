@@ -1,19 +1,44 @@
-<!-- local_rules.xml -->
-<!-- Custom detection rules for Kubernetes Control Plane Sentinel -->
-<!-- Loaded by Wazuh Manager at /var/ossec/etc/rules/local_rules.xml -->
+﻿<group name="kubernetes_security,">
 
-<group name="syscheck,k8s_security,">
-
-  <!-- Rule 110005: K8s Control Plane Manifest Tampering -->
-  <!-- Parent SID 550: Integrity checksum changed -->
-  <!-- Level 10: Critical — triggers Slack alert via ossec.conf integration -->
-  <!-- Compliance: PCI DSS 11.5 (unauthorized file modification) -->
-  <!--             GPG13 4.11 (change detection on critical files) -->
-  <rule id="110005" level="10">
-    <if_sid>550</if_sid>
-    <field name="file">/etc/kubernetes/manifests</field>
-    <description>CRITICAL: K8s Manifest Tampering Detected on $(agent.name) — file: $(file)</description>
-    <group>syscheck,k8s_security,pci_dss_11.5,gpg13_4.11,</group>
+  <rule id="110001" level="10">
+    <if_sid>5402</if_sid>
+    <match>kubectl delete</match>
+    <description>Kubernetes Resource Deleted by $(srcuser)</description>
+    <group>kubernetes_audit,pci_dss_10.2.5,</group>
   </rule>
+
+  <rule id="110005" level="12">
+    <if_sid>550, 554</if_sid>
+    <regex>/etc/kubernetes/manifests/</regex>
+    <description>K8S CLUSTER ATTACK: Manifest Tampering Detected</description>
+  </rule>
+
+  <rule id="110003" level="3">
+    <decoded_as>json</decoded_as>
+    <match>audit.k8s.io</match>
+    <description>Kubernetes Audit Event Captured</description>
+  </rule>
+
+  <rule id="110006" level="12">
+    <if_sid>110003</if_sid>
+    <field name="verb">delete</field>
+    <field name="objectRef.namespace">kube-system</field>
+    <description>Critical: Unauthorized deletion attempt in kube-system namespace!</description>
+    <mitre>
+      <id>T1485</id>
+    </mitre>
+  </rule>
+
+  <rule id="110007" level="7">
+    <match>SUCCESS: /etc/kubernetes/manifests|has been removed</match>
+    <description>Sentinel Reaper: Unauthorized Manifest Nuked</description>
+    <group>active_response,k8s_security,</group>
+  </rule>
+
+<rule id="110010" level="12" ignore_time="60">
+        <if_sid>5710</if_sid>
+        <description>FORCE BLOCK: Invalid SSH User Detected</description>
+        <group>authentication_failed,pci_dss_10.2.4,pci_dss_10.2.5</group>
+</rule>
 
 </group>
