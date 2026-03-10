@@ -10,7 +10,9 @@
 
 This repository is the source of truth for the **Kubernetes Control Plane Sentinel** — a fully deployed SOAR pipeline defending a 5-node Kubernetes HA cluster against Static Pod persistence attacks and destructive API activity.
 
-The system operates across two phases: an **Automated Response Engine** that detects and neutralizes unauthorized control plane manifests before the Kubelet can initialize them, and a **Security Operations Center** providing real-time visibility into cluster API activity, actor identity, and mitigation events through a 6-panel Wazuh/Kibana dashboard.
+The system operates across three phases: an **Automated Response Engine** that detects and neutralizes unauthorized control plane manifests before the Kubelet can initialize them, a **Security Operations Center** providing real-time visibility into cluster API activity, actor identity, and mitigation events through a 6-panel Wazuh/Kibana dashboard, and a **Host Hardening** layer providing automated SSH brute-force blocking at the network layer.
+
+**Design Philosophy:** This project prioritizes Safe Automation. By implementing a maintenance kill-switch and control-plane whitelists, the Sentinel provides high-security remediation without introducing operational instability or self-DoS risks common in naive automation scripts.
 
 ---
 
@@ -42,17 +44,16 @@ A malicious YAML file dropped into `/etc/kubernetes/manifests` bypasses the Kube
 
 **Rule 110005** — FIM Trigger (`wazuh/rules/local_rules.xml`):
 ```xml
-<group name="syscheck,k8s_security,">
-  <rule id="110005" level="10">
-    <if_sid>550</if_sid>
-    <field name="file">/etc/kubernetes/manifests</field>
-    <description>CRITICAL: K8s Manifest Tampering Detected on $(agent.name) - file: $(file)</description>
-    <group>syscheck,k8s_security,pci_dss_11.5,gpg13_4.11,</group>
+<group name="kubernetes_security,">
+  <rule id="110005" level="12">
+    <if_sid>550, 554</if_sid>
+    <regex>/etc/kubernetes/manifests/</regex>
+    <description>K8S CLUSTER ATTACK: Manifest Tampering Detected</description>
   </rule>
 </group>
 ```
 
-### Active Response — k8s-nuke.sh
+### Active Response — k8s-nuke.sh (v2.0.0)
 
 **Engineering decisions:**
 
@@ -120,12 +121,28 @@ Built on the `wazuh-alerts-*` index with KQL-filtered visualizations:
 
 ---
 
+## Phase 3 — Host Hardening (IPS)
+
+**Rule 110010** — SSH Brute Force Mitigation (Level 12):
+Detects invalid SSH user attempts across all monitored hosts. Includes `ignore_time="60"` throttle to prevent alert fatigue while triggering an automated IP block via Wazuh Active Response at the network layer. Verified during build — blocked Windows PC (192.168.10.100) on first failed attempt.
+
+```xml
+<rule id="110010" level="12" ignore_time="60">
+  <if_sid>5710</if_sid>
+  <description>FORCE BLOCK: Invalid SSH User Detected</description>
+  <group>authentication_failed,pci_dss_10.2.4,pci_dss_10.2.5</group>
+</rule>
+```
+
+---
+
 ## Defense-in-Depth Architecture
 
 | Layer | Control | Protects Against |
 |-------|---------|-----------------|
 | API Server | RBAC + Admission Controllers | Unauthorized API requests |
 | Host Filesystem | Wazuh FIM + k8s-nuke.sh | Static pod persistence bypassing API |
+| Host Network | Rule 110010 + Active Response | SSH brute force and unauthorized access |
 | Behavioral | Rule 110006 + Slack | Destructive API activity in kube-system |
 | Audit | Rule 110003 + SOC Dashboard | Actor attribution and forensic trail |
 
@@ -171,7 +188,7 @@ security-sentinel/
 │       └── wazuh_self_healing.yml   # RFC 6724 fix + Slack alert on remediation
 └── wazuh/
     ├── rules/
-    │   └── local_rules.xml          # Rules 110003, 110005, 110006
+    │   └── local_rules.xml          # Rules 110001, 110003, 110005, 110006, 110007, 110010
     └── active-response/
         └── k8s-nuke.sh              # Reaper - whitelist, maintenance mode, PCRE parsing
 ```
