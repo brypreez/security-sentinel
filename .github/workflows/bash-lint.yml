@@ -1,0 +1,22 @@
+name: "Sentinel CI - Bash Validation"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-bash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Validate k8s-nuke.sh
+        run: |
+          shellcheck wazuh/active-response/k8s-nuke.sh
+          echo "Bash syntax is valid."
