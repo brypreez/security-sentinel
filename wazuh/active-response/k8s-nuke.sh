@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # k8s-nuke.sh
 # Description: Automated Reaper for unauthorized Kubernetes manifests.
 # Author: Bryan Perez
