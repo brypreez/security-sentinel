@@ -159,10 +159,10 @@ The Sentinel specifically addresses the gap that Admission Controllers (OPA/Kyve
 |-------|-----------|---------|
 | File change detected | Wazuh FIM (inotify) | < 1s |
 | Rule 110005 matched | Wazuh Manager | < 1s |
-| Slack alert delivered | Webhook API | < 3s MTTD |
+| Slack alert delivered | Webhook API | < 2s MTTD |
 | Active response dispatched | Manager → local agent | < 1s |
 | Whitelist + maintenance check | k8s-nuke.sh | Milliseconds |
-| Unauthorized manifest deleted | rm -f | < 3s MTTR |
+| Unauthorized manifest deleted | rm -f | < 1s MTTR |
 
 ---
 
@@ -208,8 +208,8 @@ security-sentinel/
 | Cluster | 5-node K8s HA (kubeadm), etcd quorum |
 | Alert Destination | Slack #security-alerts |
 | Compliance | PCI DSS 11.5, GPG13 4.11, MITRE ATT&CK T1485, NIST 800-53 |
-| MTTD | < 5 seconds |
-| MTTR | < 3 seconds |
+| MTTD | < 1 second |
+| MTTR | < 1 second |
 
 ---
 
