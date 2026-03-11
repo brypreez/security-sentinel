@@ -11,7 +11,7 @@
 
 ## Overview
 
-This repository is the source of truth for the **Kubernetes Control Plane Sentinel** — a fully deployed SOAR pipeline defending a 5-node Kubernetes HA cluster against Static Pod persistence attacks and destructive API activity.
+This repository is the source of truth for the **Kubernetes Control Plane Sentinel** — a fully deployed SOAR pipeline defending a 7-node Kubernetes HA cluster against Static Pod persistence attacks and destructive API activity.
 
 The system operates across three phases: an **Automated Response Engine** that detects and neutralizes unauthorized control plane manifests before the Kubelet can initialize them, a **Security Operations Center** providing real-time visibility into cluster API activity, actor identity, and mitigation events through a 6-panel Wazuh/Kibana dashboard, and a **Host Hardening** layer providing automated SSH brute-force blocking at the network layer.
 
@@ -139,6 +139,25 @@ Detects invalid SSH user attempts across all monitored hosts. Includes `ignore_t
 
 ---
 
+## FIM Centralization — agent.conf
+
+All FIM configuration is centralized on the Wazuh Manager and pushed to all 10 agents via `/var/ossec/etc/shared/default/agent.conf`. No per-agent syscheck configuration required.
+
+**Monitored paths (pushed cluster-wide):**
+
+| Path | Mode | Purpose |
+|------|------|---------|
+| `/etc/kubernetes/manifests` | realtime, check_all | Control plane manifest tampering |
+| `/var/ossec/etc/rules` | realtime, check_all | Wazuh rule integrity |
+| `/var/ossec/active-response/bin` | realtime, check_all | Active response script integrity |
+| `/etc/cron.d` | realtime, check_all | Cron persistence detection |
+| `/usr/bin/kubectl` | check_all | Binary integrity |
+| `/etc/passwd`, `/etc/shadow`, `/etc/hosts` | check_all | Credential and host file tampering |
+
+This approach mirrors enterprise SIEM deployments where FIM policy is managed centrally and agents are policy consumers — no SSH required to update monitoring scope across a fleet.
+
+---
+
 ## Defense-in-Depth Architecture
 
 | Layer | Control | Protects Against |
@@ -203,9 +222,9 @@ security-sentinel/
 | Component | Detail |
 |-----------|--------|
 | Wazuh Version | 4.14.3 |
-| Monitored Nodes | 3 K8s control planes + 2 workers + 3 Proxmox hosts |
-| Agent Count | 8 |
-| Cluster | 5-node K8s HA (kubeadm), etcd quorum |
+| Monitored Nodes | 3 K8s control planes + 4 workers + 3 Proxmox hosts |
+| Agent Count | 10 |
+| Cluster | 7-node K8s HA (kubeadm), etcd quorum |
 | Alert Destination | Slack #security-alerts |
 | Compliance | PCI DSS 11.5, GPG13 4.11, MITRE ATT&CK T1485, NIST 800-53 |
 | MTTD | < 1 second |
@@ -215,10 +234,11 @@ security-sentinel/
 
 ## Roadmap
 
-- [ ] Centralize FIM config via `agent.conf` on Wazuh Manager
+- [x] Centralize FIM config via `agent.conf` on Wazuh Manager
+- [x] K8s NetworkPolicy enforcement layer
 - [ ] Hash-based whitelisting in k8s-nuke.sh for authorized manifest validation
-- [ ] K8s NetworkPolicy enforcement layer
 - [ ] OPA/Gatekeeper policy-as-code via ArgoCD
+- [ ] K8s audit logging routed into Wazuh SIEM pipeline
 
 ---
 
