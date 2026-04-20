@@ -245,7 +245,7 @@ security-sentinel/
 ## Related
 
 - [`homelab`](https://github.com/brypreez/homelab) — Full infrastructure repository (Proxmox, Kubernetes, Terraform, Ansible, Observability)
-- [`sentinel-soc-automation`]((https://github.com/brypreez/sentinel-soc-automation)) — 2026 Q1 Workshop Repository (Wazuh, Reproducibility Active Response, SIEM)
+- [`sentinel-soc-automation`](https://github.com/brypreez/sentinel-soc-automation) — 2026 Q1 Workshop Repository (Wazuh, Reproducibility Active Response, SIEM)
 
 ---
 
