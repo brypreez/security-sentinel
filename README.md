@@ -249,4 +249,4 @@ security-sentinel/
 
 ---
 
-*Operated to production standards. Everything here is verified operational.*
+*Operated to production standards. Everything here is verified operational.
