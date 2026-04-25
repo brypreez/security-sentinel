@@ -36,3 +36,5 @@ id_ed25519
 *.swo
 *.tmp
 Thumbs.db
+
+# ---
