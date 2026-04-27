@@ -9,7 +9,7 @@
 
 ---
 
-## Overview
+## Overvie
 
 This repository is the source of truth for the **Kubernetes Control Plane Sentinel** — a fully deployed SOAR pipeline defending a 7-node Kubernetes HA cluster against Static Pod persistence attacks and destructive API activity.
 
