@@ -13,7 +13,7 @@
 
 This repository is the source of truth for the **Kubernetes Control Plane Sentinel** — a fully deployed SOAR pipeline defending a 7-node Kubernetes HA cluster against Static Pod persistence attacks and destructive API activity.
 
-The system operates across three phases: an **Automated Response Engine** that detects and neutralizes unauthorized control plane manifests before the Kubelet can initialize them, a **Security Operations Center** providing real-time visibility into cluster API activity, actor identity, and mitigation events through a 6-panel Wazuh/Kibana dashboard, and a **Host Hardening** layer providing automated SSH brute-force blocking at the network layer.
+The system operates across three phases: an **Automated Response Engine** that detects and neutralizes unauthorized control plane manifests before the Kubelet can initialize them, a **Security Operations Center** providing real-time visibility into cluster API activity, actor identity, and mitigation events through a 6-panel Wazuh/Kibana dashboard, and a **Host Hardening** layer providing automated SSH brute-force blocking at the network layer
 
 **Design Philosophy:** This project prioritizes Safe Automation. By implementing a maintenance kill-switch and control-plane whitelists, the Sentinel provides high-security remediation without introducing operational instability or self-DoS risks common in naive automation scripts.
 
