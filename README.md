@@ -141,7 +141,7 @@ Detects invalid SSH user attempts across all monitored hosts. Includes `ignore_t
 
 ## FIM Centralization — agent.conf
 
-All FIM configuration is centralized on the Wazuh Manager and pushed to all 10 agents via `/var/ossec/etc/shared/default/agent.conf`. No per-agent syscheck configuration required
+All FIM configuration is centralized on the Wazuh Manager and pushed to all 10 agents via `/var/ossec/etc/shared/default/agent.conf`. No per-agent syscheck configuration required.
 
 **Monitored paths (pushed cluster-wide):**
 
