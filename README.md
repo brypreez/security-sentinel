@@ -236,7 +236,7 @@ security-sentinel/
 
 - [x] Centralize FIM config via `agent.conf` on Wazuh Manager
 - [x] K8s NetworkPolicy enforcement layer
-- [ ] Hash-based whitelisting in k8s-nuke.sh for authorized manifest validation
+- [x] Hash-based whitelisting in k8s-nuke.sh for authorized manifest validation
 - [ ] OPA/Gatekeeper policy-as-code via ArgoCD
 - [ ] K8s audit logging routed into Wazuh SIEM pipeline
 
